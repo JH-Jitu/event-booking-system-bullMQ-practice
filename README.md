@@ -119,3 +119,25 @@ When two workers race for the last seats, Postgres row-locks the event row for t
 As a backstop, the schema carries a `CHECK (available_seats >= 0 AND available_seats <= total_seats)` constraint, so even a future buggy code path physically cannot drive the count negative.
 
 The included `scripts/concurrency-check.mjs` demonstrates this: 10 concurrent bookings against 5 seats always end with exactly 5 confirmed.
+
+### How duplicates are prevented
+
+Idempotency is layered end to end, keyed on the client-supplied `requestId`:
+
+1. **Unique index on `bookings.request_id`.** The database is the source of truth — no application check can race past it.
+2. **Insert-and-catch, not select-then-insert.** The endpoint inserts directly and catches Postgres error `23505` (unique violation), then returns the _original_ booking with `duplicate: true` and the same `202`. A select-then-insert check would be a TOCTOU race: two identical requests can both pass the select before either inserts. The unique index makes exactly one insert win, deterministically.
+3. **Queue-level dedupe.** The job is enqueued with `jobId = booking.id`, so BullMQ drops a second enqueue of the same booking.
+4. **Worker `PENDING` guard.** The worker exits early unless the booking is still `PENDING`, so a retried or duplicated job can never deduct seats twice.
+
+### Polling vs push
+
+The dashboard polls every 3 seconds. At this scale that's a deliberate simplicity trade-off: it survives reconnects for free and needs zero server state. The push-based alternative is listed under improvements.
+
+## What I would improve with more time
+
+- **Outbox pattern** for the insert→enqueue gap: if the process dies after the booking insert but before the enqueue, the booking stays `PENDING` forever. An outbox table written in the same transaction plus a relay would close it.
+- **Integration tests with Testcontainers** — real Postgres and Redis per test run, covering the race conditions the unit tests can only mock.
+- **WebSocket/SSE** to push status changes instead of 3-second polling.
+- **Auth and rate limiting** — the API is currently open.
+- **Dead-letter alerting** — jobs that exhaust their 3 retries should page someone, not sit in a failed set.
+- **Past-event validation** — reject bookings for events whose date has passed.

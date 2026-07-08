@@ -22,76 +22,115 @@ export function BookingsTable({
   onPageChange,
 }: BookingsTableProps) {
   const showEmptyState = !isLoading && bookings.length === 0;
+  const showLoadingState = isLoading && bookings.length === 0;
   const page = meta?.page ?? 1;
   const totalPages = meta?.totalPages ?? 1;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead>
-            <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <th scope="col" className="hidden px-4 py-3 sm:table-cell">Reference</th>
-              <th scope="col" className="px-4 py-3">Event</th>
-              <th scope="col" className="px-4 py-3">Customer</th>
-              <th scope="col" className="px-4 py-3 text-right">Seats</th>
-              <th scope="col" className="px-4 py-3">Status</th>
-              <th scope="col" className="hidden px-4 py-3 xl:table-cell">Created</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {isLoading && bookings.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                  Loading bookings…
-                </td>
-              </tr>
-            )}
+      {showLoadingState && (
+        <p className="px-4 py-10 text-center text-sm text-slate-400">
+          Loading bookings…
+        </p>
+      )}
 
-            {showEmptyState && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                  No bookings found. Create one above to get started.
-                </td>
-              </tr>
-            )}
+      {showEmptyState && (
+        <p className="px-4 py-10 text-center text-sm text-slate-400">
+          No bookings found. Create one to get started.
+        </p>
+      )}
 
-            {bookings.map((booking) => (
-              <tr key={booking.bookingReference} className="hover:bg-slate-50">
-                <td
-                  className="hidden px-4 py-2.5 font-mono text-xs text-slate-400 sm:table-cell"
+      {/* Mobile: card list */}
+      {bookings.length > 0 && (
+        <ul className="divide-y divide-slate-100 md:hidden">
+          {bookings.map((booking) => (
+            <li key={booking.bookingReference} className="space-y-2 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 font-medium text-slate-900">
+                  {booking.eventName}
+                </p>
+                <StatusBadge status={booking.status} />
+              </div>
+              <div className="text-sm">
+                <p className="text-slate-700">{booking.customerName}</p>
+                <p className="truncate text-xs text-slate-400">
+                  {booking.customerEmail}
+                </p>
+              </div>
+              {booking.status === 'FAILED' && booking.failureReason && (
+                <p className="text-xs text-red-600">{booking.failureReason}</p>
+              )}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span>
+                  {booking.seats} seat{booking.seats === 1 ? '' : 's'}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{formatDateTime(booking.createdAt)}</span>
+                <span aria-hidden="true">·</span>
+                <span
+                  className="font-mono text-slate-400"
                   title={booking.bookingReference}
                 >
                   {booking.bookingReference.slice(0, 8)}
-                </td>
-                <td className="min-w-44 px-4 py-2.5 font-medium text-slate-900">
-                  {booking.eventName}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="text-slate-700">{booking.customerName}</div>
-                  <div className="text-xs text-slate-400">
-                    {booking.customerEmail}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">
-                  {booking.seats}
-                </td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={booking.status} />
-                  {booking.status === 'FAILED' && booking.failureReason && (
-                    <div className="mt-1 text-xs text-red-600">
-                      {booking.failureReason}
-                    </div>
-                  )}
-                </td>
-                <td className="hidden whitespace-nowrap px-4 py-2.5 text-xs text-slate-500 xl:table-cell">
-                  {formatDateTime(booking.createdAt)}
-                </td>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Desktop: table */}
+      {bookings.length > 0 && (
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th scope="col" className="px-4 py-3">Reference</th>
+                <th scope="col" className="px-4 py-3">Event</th>
+                <th scope="col" className="px-4 py-3">Customer</th>
+                <th scope="col" className="px-4 py-3 text-right">Seats</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="hidden px-4 py-3 xl:table-cell">Created</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {bookings.map((booking) => (
+                <tr key={booking.bookingReference} className="hover:bg-slate-50">
+                  <td
+                    className="px-4 py-2.5 font-mono text-xs text-slate-400"
+                    title={booking.bookingReference}
+                  >
+                    {booking.bookingReference.slice(0, 8)}
+                  </td>
+                  <td className="min-w-44 px-4 py-2.5 font-medium text-slate-900">
+                    {booking.eventName}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="text-slate-700">{booking.customerName}</div>
+                    <div className="text-xs text-slate-400">
+                      {booking.customerEmail}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">
+                    {booking.seats}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StatusBadge status={booking.status} />
+                    {booking.status === 'FAILED' && booking.failureReason && (
+                      <div className="mt-1 text-xs text-red-600">
+                        {booking.failureReason}
+                      </div>
+                    )}
+                  </td>
+                  <td className="hidden whitespace-nowrap px-4 py-2.5 text-xs text-slate-500 xl:table-cell">
+                    {formatDateTime(booking.createdAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-500">

@@ -77,7 +77,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-lg font-extrabold text-white shadow-sm">
               E
@@ -100,7 +100,7 @@ function App() {
         </div>
       </header>
 
-      <main className="px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
         {error && (
           <div
             role="alert"
@@ -111,8 +111,8 @@ function App() {
           </div>
         )}
 
-        <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)]">
-          <div className="lg:sticky lg:top-6">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)]">
+          <div className="min-w-0 lg:sticky lg:top-6">
             <BookingForm
               events={events}
               onCreated={() => void refresh()}
@@ -120,7 +120,7 @@ function App() {
             />
           </div>
 
-          <section className="space-y-3">
+          <section className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-900">
                 Bookings
