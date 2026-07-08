@@ -9,31 +9,36 @@ A small event booking system where users book seats for events. The API accepts 
 
 ```
 event-booking-system/
-├── docker-compose.yml     # PostgreSQL + Redis
-├── backend/               # NestJS API + queue worker
-│   ├── src/
-│   │   ├── events/        # GET /events
-│   │   ├── bookings/      # POST/GET /bookings + BullMQ processor
-│   │   └── database/      # data source, migrations, seed script
-│   └── scripts/           # concurrency demo script
-└── frontend/              # React dashboard
+├── docker-compose.yml                  # PostgreSQL + Redis
+├── scripts/
+│   └── concurrency-check.mjs           # overbooking demo (fires N concurrent bookings)
+├── event-booking.postman_collection.json
+├── backend/
+│   └── src/
+│       ├── events/                     # GET /events
+│       ├── bookings/                   # POST/GET /bookings, BullMQ worker, unit tests
+│       └── database/                   # data source, migrations, seed
+└── frontend/
+    └── src/
+        ├── lib/api.ts                  # typed API client
+        └── components/                 # form, filters, table, badge, toast
 ```
 
 ## Setup and run
 
-Prerequisites: Node.js 20+, Docker (for PostgreSQL and Redis).
+Prerequisites: Node.js 20+, Docker.
 
-**1. Start PostgreSQL and Redis**
+**1. Start PostgreSQL and Redis** (from the repo root)
 
 ```bash
 docker compose up -d
 ```
 
-Postgres listens on `5432`, Redis on `6379`. If either port is taken on your machine, override it and mirror the change in `backend/.env`:
+Postgres maps to host port `5432`, Redis to `6379`. If a port is taken on your machine, create a `.env` next to `docker-compose.yml` (compose reads it automatically) and mirror the change in `backend/.env`:
 
 ```bash
-# example: run Redis on 6380 instead
-REDIS_PORT=6380 docker compose up -d
+# .env at repo root — example: run Redis on 6380 instead
+REDIS_PORT=6380
 ```
 
 **2. Backend** (from `backend/`)
@@ -48,19 +53,27 @@ npm run start:dev         # API + worker on http://localhost:3000
 
 **3. Frontend** (from `frontend/`, in a second terminal)
 
+```bash
+cp .env.example .env      # VITE_API_URL=http://localhost:3000
+npm install
+npm run dev               # dashboard on http://localhost:5173
+```
+
 **4. Tests** (from `backend/`)
 
 ```bash
 npm test
 ```
 
-**5. Optional: concurrency demo** (from `backend/`, with the API running)
+**5. Optional: concurrency demo** (from the repo root, with the API running)
 
-Fires 10 concurrent 1-seat bookings at the 5-seat "Exclusive Wine Tasting" event (eventId: 3 - from seed data) and verifies exactly 5 confirm and 5 fail: (as total and available seats 5)
+Fires 10 concurrent 1-seat bookings at the 5-seat "Exclusive Wine Tasting" event (eventId 3 from the seed) and asserts that confirmed bookings never exceed the seats that were available:
 
 ```bash
 node scripts/concurrency-check.mjs 3 10
 ```
+
+A Postman collection (`event-booking.postman_collection.json`) with assertions for every endpoint, the idempotency flow, and validation errors is included at the root.
 
 ## API
 
@@ -87,6 +100,22 @@ The response is `202 Accepted` with the booking reference and `PENDING` status. 
 
 ### Asynchronous processing
 
-`POST /bookings` only validates the payload, checks the event exists, inserts a `PENDING` row, and enqueues a BullMQ job — no seat math on the request path. The worker (a BullMQ processor inside the same Nest process) does the real
-work: deduct seats and mark the booking `CONFIRMED`, or mark it `FAILED` with a reason. Jobs retry up to 3 times with exponential backoff, but only for unexpected errors (e.g. a dropped DB connection). Business outcomes like
-"sold out" complete the job normally with a `FAILED` booking status — retrying those would never succeed.
+`POST /bookings` only validates the payload, checks the event exists, inserts a `PENDING` row, and enqueues a BullMQ job — no seat math on the request path. The worker (a BullMQ processor inside the same Nest process) does the real work inside a single transaction: deduct seats and mark the booking `CONFIRMED`, or mark it `FAILED` with a reason.
+
+Jobs retry up to 3 times with exponential backoff, but only for unexpected errors (e.g. a dropped DB connection). Business outcomes like "sold out" complete the job normally with a `FAILED` booking status — retrying those would never succeed, so the worker never throws for them.
+
+### How overbooking is prevented
+
+Seat deduction is a single conditional `UPDATE` — the check and the deduction are one atomic statement:
+
+```sql
+UPDATE events
+SET    available_seats = available_seats - $seats
+WHERE  id = $eventId AND available_seats >= $seats
+```
+
+When two workers race for the last seats, Postgres row-locks the event row for the first `UPDATE`; the second statement waits, then **re-evaluates its `WHERE` clause against the updated row**. If not enough seats remain, it matches zero rows and reports `affected = 0`, and the worker marks that booking `FAILED`. There is no window between "read the count" and "write the count" for another transaction to sneak into.
+
+As a backstop, the schema carries a `CHECK (available_seats >= 0 AND available_seats <= total_seats)` constraint, so even a future buggy code path physically cannot drive the count negative.
+
+The included `scripts/concurrency-check.mjs` demonstrates this: 10 concurrent bookings against 5 seats always end with exactly 5 confirmed.
