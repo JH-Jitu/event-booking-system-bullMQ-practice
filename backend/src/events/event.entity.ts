@@ -25,6 +25,6 @@ export class Event {
   @Column({ name: 'price_per_seat', type: 'numeric', precision: 10, scale: 2 })
   pricePerSeat: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

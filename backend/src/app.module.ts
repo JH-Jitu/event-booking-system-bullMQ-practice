@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         synchronize: false, // schema changes go trhough migration, instead auto-sync
       }),
     }),
+    EventsModule,
   ],
   // controllers: [AppController],
   // providers: [AppService],
