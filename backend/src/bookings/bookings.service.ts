@@ -1,7 +1,10 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Queue } from 'bullmq';
 import { Event } from 'src/events/event.entity';
 import { QueryFailedError, Repository } from 'typeorm';
+import { BOOKING_QUEUE, BookingJobData } from './booking-queue.constants';
 import { Booking } from './booking.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query';
@@ -45,6 +48,8 @@ export class BookingsService {
     private readonly bookingRepository: Repository<Booking>,
     @InjectRepository(Event)
     private readonly eventRepository: Repository<Event>,
+    @InjectQueue(BOOKING_QUEUE)
+    private readonly bookingQueue: Queue<BookingJobData>,
   ) {}
 
   async accept(dto: CreateBookingDto): Promise<AcceptedBooking> {
@@ -65,6 +70,12 @@ export class BookingsService {
           seats: dto.seats,
           status: 'PENDING',
         }),
+      );
+
+      await this.bookingQueue.add(
+        'process-booking',
+        { bookingId: booking.id },
+        { jobId: booking.id }, // twice -> duplicate, identify job, same will not be enqueued
       );
       return {
         bookingReference: booking.id,

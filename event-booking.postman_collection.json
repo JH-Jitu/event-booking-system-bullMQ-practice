@@ -1,0 +1,290 @@
+{
+  "info": {
+    "name": "Event Booking System",
+    "description": "API collection for the Event Booking System backend (NestJS). Run the requests in order (or use the Collection Runner) so the idempotency check can reuse the requestId from 'POST Create booking'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "requestId", "value": "" },
+    { "key": "bookingReference", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "List events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/events", "host": ["{{baseUrl}}"], "path": ["events"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const events = pm.response.json();",
+                  "pm.test('Returns an array of events', () => {",
+                  "  pm.expect(events).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('Events have the expected shape', () => {",
+                  "  const event = events[0];",
+                  "  pm.expect(event).to.have.keys(['id', 'name', 'date', 'totalSeats', 'availableSeats', 'pricePerSeat', 'createdAt']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Create booking (202 + reference)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"eventId\": 1,\n  \"customerName\": \"Alice Rahman\",\n  \"customerEmail\": \"alice@example.com\",\n  \"seats\": 2\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh requestId each run; the duplicate request below reuses it",
+                  "pm.collectionVariables.set('requestId', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202 Accepted', () => pm.response.to.have.status(202));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a booking reference', () => {",
+                  "  pm.expect(body.bookingReference).to.be.a('string').that.is.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('Status is PENDING and not a duplicate', () => {",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "  pm.expect(body.duplicate).to.be.false;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('bookingReference', body.bookingReference);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking again (same reference, duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"eventId\": 1,\n  \"customerName\": \"Alice Rahman\",\n  \"customerEmail\": \"alice@example.com\",\n  \"seats\": 2\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202 Accepted', () => pm.response.to.have.status(202));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns the SAME booking reference', () => {",
+                  "  pm.expect(body.bookingReference).to.eql(pm.collectionVariables.get('bookingReference'));",
+                  "});",
+                  "",
+                  "pm.test('Flagged as duplicate', () => {",
+                  "  pm.expect(body.duplicate).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking - bad email (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{$guid}}\",\n  \"eventId\": 1,\n  \"customerName\": \"Bob Broken\",\n  \"customerEmail\": \"not-an-email\",\n  \"seats\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns field-level validation messages', () => {",
+                  "  pm.expect(body.message).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.message.join(' ')).to.include('customerEmail');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking - zero seats (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{$guid}}\",\n  \"eventId\": 1,\n  \"customerName\": \"Carol Zero\",\n  \"customerEmail\": \"carol@example.com\",\n  \"seats\": 0\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns field-level validation messages', () => {",
+                  "  pm.expect(body.message).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.message.join(' ')).to.include('seats');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking - unknown event (404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestId\": \"{{$guid}}\",\n  \"eventId\": 99999,\n  \"customerName\": \"Dave Ghost\",\n  \"customerEmail\": \"dave@example.com\",\n  \"seats\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message mentions the event', () => {",
+                  "  pm.expect(body.message).to.include('99999');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns data array and pagination meta', () => {",
+                  "  pm.expect(body.data).to.be.an('array');",
+                  "  pm.expect(body.meta).to.have.keys(['page', 'limit', 'total', 'totalPages']);",
+                  "});",
+                  "",
+                  "pm.test('Bookings include eventName', () => {",
+                  "  if (body.data.length > 0) {",
+                  "    pm.expect(body.data[0]).to.have.property('eventName');",
+                  "    pm.expect(body.data[0]).to.have.property('bookingReference');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List bookings - filtered & paginated",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings?eventId=1&status=PENDING&page=1&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings"],
+              "query": [
+                { "key": "eventId", "value": "1" },
+                { "key": "status", "value": "PENDING" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Respects the limit', () => {",
+                  "  pm.expect(body.meta.limit).to.eql(5);",
+                  "  pm.expect(body.data.length).to.be.at.most(5);",
+                  "});",
+                  "",
+                  "pm.test('All rows match the filters', () => {",
+                  "  body.data.forEach((booking) => {",
+                  "    pm.expect(booking.eventId).to.eql(1);",
+                  "    pm.expect(booking.status).to.eql('PENDING');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
